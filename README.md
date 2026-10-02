@@ -44,8 +44,8 @@ This project creates subtitle files. It does not automatically add visible capti
 | `transcribe.py` | Runs a Sarvam batch transcription job with `saaras:v4`, `hi-IN`, Roman-script `translit` mode, and timestamps. |
 | `captions.py` | Generates one-line or two-line SRT captions from Sarvam JSON. |
 | `requirement.txt` | The Python dependency list. The filename is singular: **requirement**, not requirements. |
-| `Apple_Pay_In_India - 4K.mov` | Included video. |
-| `audio/Apple_Pay_In_India - 4K.wav` | Included extracted audio. |
+| `Apple_Pay_In_India - 1080p.mp4` | Included video. |
+| `audio/Apple_Pay_In_India - 1080p.wav` | Included extracted audio. |
 | `outputs/day8/` | Example transcript and subtitle files. |
 | `outputs/Apple_Pay_In_India - 4K/` | Another example transcript and one-line subtitle file. |
 | `.git/` and `.DS_Store` | Git history and macOS metadata; not needed for running subtitles. |
@@ -319,9 +319,9 @@ deactivate
 
 ## Example using the included video
 
-The folder already includes `audio/Apple_Pay_In_India - 4K.wav`, so you can skip extraction if that audio is the version you want.
+The folder already includes `audio/Apple_Pay_In_India - 1080p.wav`, so you can skip extraction if that audio is the version you want.
 
-To generate subtitles from its already downloaded JSON, with no new API call:
+The included transcript and subtitles still use the original `4K` filenames. To generate subtitles from that existing JSON, with no new API call:
 
 ```bash
 python captions.py "outputs/Apple_Pay_In_India - 4K/Apple_Pay_In_India - 4K.wav.json"
@@ -332,10 +332,10 @@ Enter `1` for one-line captions or `2` for two-line captions when prompted. The 
 If you want to create a new transcription from the included audio instead:
 
 ```bash
-python transcribe.py "audio/Apple_Pay_In_India - 4K.wav"
+python transcribe.py "audio/Apple_Pay_In_India - 1080p.wav"
 ```
 
-That command uploads the audio to Sarvam and may use billable credits. Its downloads go into `outputs/Apple_Pay_In_India - 4K/`; inspect that folder before choosing a JSON filename. The output folder uses the audio filename without its extension, even though the input is stored in `audio/`.
+That command uploads the audio to Sarvam and may use billable credits. Its new downloads go into `outputs/Apple_Pay_In_India - 1080p/`; inspect that folder before choosing a JSON filename. This is separate from the included older `4K` transcript folder. The output folder uses the audio filename without its extension, even though the input is stored in `audio/`.
 
 ## What caption generation can and cannot do
 
