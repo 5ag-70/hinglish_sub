@@ -44,8 +44,8 @@ This project creates subtitle files. It does not automatically add visible capti
 | `transcribe.py` | Runs a Sarvam batch transcription job with `saaras:v4`, `hi-IN`, Roman-script `translit` mode, and timestamps. |
 | `captions.py` | Generates one-line or two-line SRT captions from Sarvam JSON. |
 | `requirement.txt` | The Python dependency list. The filename is singular: **requirement**, not requirements. |
-| `audio/Day9.wav` | Included audio recording. |
-| `Apple_Pay_In_India - 4K.mov` and `.wav` | Included video and extracted audio. |
+| `Apple_Pay_In_India - 4K.mov` | Included video. |
+| `audio/Apple_Pay_In_India - 4K.wav` | Included extracted audio. |
 | `outputs/day8/` | Example transcript and subtitle files. |
 | `outputs/Apple_Pay_In_India - 4K/` | Another example transcript and one-line subtitle file. |
 | `.git/` and `.DS_Store` | Git history and macOS metadata; not needed for running subtitles. |
@@ -174,15 +174,24 @@ You can check caption generation with the included `day8` transcript. This step 
 Run this from the project folder with your Python environment active:
 
 ```bash
-python captions.py "outputs/day8/day8.wav.json" --lines 2
+python captions.py "outputs/day8/day8.wav.json"
 ```
 
-Expected result:
+The script asks you to choose a layout:
 
 ```text
-Caption generation complete!
-SRT: outputs/day8/day8_2-line.srt
+Choose caption layout:
+
+1. One line  - Vertical video / Reels / Shorts
+2. Two lines - Horizontal video / YouTube
+
+Enter 1 or 2:
 ```
+
+Type `1` or `2` and press Return. When generation finishes, you will see `Caption generation complete!` and the saved SRT path:
+
+- Choose `1`: `outputs/day8/day8_1-line.srt`.
+- Choose `2`: `outputs/day8/day8_2-line.srt`.
 
 Open that folder in Finder:
 
@@ -253,25 +262,29 @@ The code requests Roman-script output using `translit`, as described in [Sarvam'
 
 ### Step 4. Generate the caption layout
 
-Choose one command:
-
-**Vertical video: Reels or Shorts, one line per caption**
+Run the caption script using the JSON filename downloaded in Step 3:
 
 ```bash
-python captions.py "outputs/My Video/My Video.wav.json" --lines 1
+python captions.py "outputs/My Video/My Video.wav.json"
 ```
 
-Output: `outputs/My Video/My Video_1-line.srt`.
+The script asks you to choose a layout:
 
-**Horizontal video: regular YouTube video, up to two lines per caption**
+```text
+Choose caption layout:
 
-```bash
-python captions.py "outputs/My Video/My Video.wav.json" --lines 2
+1. One line  - Vertical video / Reels / Shorts
+2. Two lines - Horizontal video / YouTube
+
+Enter 1 or 2:
 ```
 
-Output: `outputs/My Video/My Video_2-line.srt`.
+Type your choice and press Return:
 
-You can generate both versions from the same JSON without paying for another transcription. If you omit `--lines`, the script asks you to enter `1` or `2` interactively.
+- Enter `1` for vertical videos such as Reels or Shorts. Output: `outputs/My Video/My Video_1-line.srt`.
+- Enter `2` for horizontal videos such as regular YouTube videos. Output: `outputs/My Video/My Video_2-line.srt`.
+
+Wait for `Caption generation complete!` and check the printed SRT path. To create the other layout, run the same command again and select the other option. Both layouts use the same JSON, so no new transcription is needed.
 
 ### Step 5. Locate and review your subtitles
 
@@ -306,27 +319,23 @@ deactivate
 
 ## Example using the included video
 
-The folder already includes `Apple_Pay_In_India - 4K.wav`, so you can skip extraction if that audio is the version you want.
+The folder already includes `audio/Apple_Pay_In_India - 4K.wav`, so you can skip extraction if that audio is the version you want.
 
-To make two-line subtitles from its already downloaded JSON, with no new API call:
-
-```bash
-python captions.py "outputs/Apple_Pay_In_India - 4K/Apple_Pay_In_India - 4K.wav.json" --lines 2
-```
-
-Output:
-
-```text
-outputs/Apple_Pay_In_India - 4K/Apple_Pay_In_India - 4K_2-line.srt
-```
-
-To transcribe the included `Day9.wav` recording instead:
+To generate subtitles from its already downloaded JSON, with no new API call:
 
 ```bash
-python transcribe.py "audio/Day9.wav"
+python captions.py "outputs/Apple_Pay_In_India - 4K/Apple_Pay_In_India - 4K.wav.json"
 ```
 
-That command contacts Sarvam. Its downloads go into `outputs/Day9/`; inspect that folder before choosing a JSON filename.
+Enter `1` for one-line captions or `2` for two-line captions when prompted. The SRT is saved in `outputs/Apple_Pay_In_India - 4K/` as `Apple_Pay_In_India - 4K_1-line.srt` or `Apple_Pay_In_India - 4K_2-line.srt`, depending on your choice.
+
+If you want to create a new transcription from the included audio instead:
+
+```bash
+python transcribe.py "audio/Apple_Pay_In_India - 4K.wav"
+```
+
+That command uploads the audio to Sarvam and may use billable credits. Its downloads go into `outputs/Apple_Pay_In_India - 4K/`; inspect that folder before choosing a JSON filename. The output folder uses the audio filename without its extension, even though the input is stored in `audio/`.
 
 ## What caption generation can and cannot do
 
