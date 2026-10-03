@@ -1,6 +1,9 @@
+"""Transcribe audio files using SarvamAI Saaras v4 and save the raw JSON output."""
+
 import os
 import argparse
 from pathlib import Path
+
 from sarvamai import SarvamAI
 
 

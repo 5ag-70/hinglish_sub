@@ -1,6 +1,8 @@
-import re
-import json
+"""Generate optimized SRT captions from Saaras transcription JSON."""
+
 import argparse
+import json
+import re
 from pathlib import Path
 
 
@@ -9,17 +11,14 @@ from pathlib import Path
 # ============================================================
 
 CAPTION_PROFILES = {
-
     # Vertical video:
     # Instagram Reels / YouTube Shorts / TikTok
     1: {
         "name": "1-line",
         "description": "Vertical / Reels / Shorts",
-
         "max_lines": 1,
         "max_chars_per_line": 34,
         "max_words": 7,
-
         "min_duration": 1.0,
         "target_duration": 2.3,
         "max_duration": 3.5,
@@ -30,11 +29,9 @@ CAPTION_PROFILES = {
     2: {
         "name": "2-line",
         "description": "Horizontal / YouTube",
-
         "max_lines": 2,
         "max_chars_per_line": 38,
         "max_words": 9,
-
         "min_duration": 1.2,
         "target_duration": 2.5,
         "max_duration": 4.0,
@@ -71,10 +68,39 @@ DAY_NUMBERS = {
 
 
 # ============================================================
+# Caption splitting configuration
+# ============================================================
+
+PREFERRED_BREAKS = {
+    "aur",
+    "but",
+    "lekin",
+    "toh",
+    "because",
+    "basically",
+    "phir",
+    "then",
+    "so",
+}
+
+
+MEDIA_EXTENSIONS = (
+    ".mp3",
+    ".wav",
+    ".m4a",
+    ".aac",
+    ".flac",
+    ".ogg",
+    ".mp4",
+)
+
+
+# ============================================================
 # Text cleanup
 # ============================================================
 
 def normalize_caption_text(text):
+    """Normalize common words and spacing in caption text."""
 
     # --------------------------------------------------------
     # "day eight" -> "day 8"
@@ -87,10 +113,9 @@ def normalize_caption_text(text):
     )
 
     def replace_day_number(match):
+        """Replace a written day number with its numeric value."""
 
-        number_word = (
-            match.group(1).lower()
-        )
+        number_word = match.group(1).lower()
 
         return (
             f"day "
@@ -126,7 +151,10 @@ def normalize_caption_text(text):
         flags=re.IGNORECASE,
     )
 
+    # --------------------------------------------------------
     # Remove duplicate spaces
+    # --------------------------------------------------------
+
     text = re.sub(
         r"\s+",
         " ",
@@ -141,6 +169,7 @@ def normalize_caption_text(text):
 # ============================================================
 
 def srt_timestamp(seconds):
+    """Convert seconds into an SRT timestamp."""
 
     milliseconds = round(
         seconds * 1000
@@ -176,10 +205,11 @@ def srt_timestamp(seconds):
 
 
 # ============================================================
-# Check how much text a caption can contain
+# Caption size helpers
 # ============================================================
 
 def caption_character_limit(profile):
+    """Return the maximum total characters allowed in a caption."""
 
     return (
         profile["max_chars_per_line"]
@@ -187,59 +217,44 @@ def caption_character_limit(profile):
     )
 
 
-# ============================================================
-# Smart caption splitter
-# ============================================================
-
-def split_caption_text(
+def calculate_target_words(
     text,
-    start,
-    end,
+    words,
+    duration,
     profile,
 ):
-
-    words = text.strip().split()
-
-    if not words:
-        return []
-
-    total_duration = (
-        end - start
-    )
-
-    total_words = len(words)
+    """Calculate the approximate number of words per caption."""
 
     max_words = profile["max_words"]
+    max_duration = profile["max_duration"]
 
-    max_duration = (
-        profile["max_duration"]
-    )
-
-    max_chars = (
-        caption_character_limit(
-            profile
-        )
+    max_chars = caption_character_limit(
+        profile
     )
 
     # --------------------------------------------------------
-    # Work out approximately how many chunks are required
+    # Number of chunks needed because of word count
     # --------------------------------------------------------
 
     chunks_by_words = max(
         1,
         (
-            total_words
+            len(words)
             + max_words
             - 1
         )
         // max_words,
     )
 
+    # --------------------------------------------------------
+    # Number of chunks needed because of duration
+    # --------------------------------------------------------
+
     chunks_by_duration = max(
         1,
         int(
             (
-                total_duration
+                duration
                 + max_duration
                 - 0.001
             )
@@ -247,12 +262,14 @@ def split_caption_text(
         ),
     )
 
-    total_characters = len(text)
+    # --------------------------------------------------------
+    # Number of chunks needed because of character count
+    # --------------------------------------------------------
 
     chunks_by_characters = max(
         1,
         (
-            total_characters
+            len(text)
             + max_chars
             - 1
         )
@@ -265,52 +282,71 @@ def split_caption_text(
         chunks_by_characters,
     )
 
-    target_words = max(
+    return max(
         1,
         round(
-            total_words
+            len(words)
             / number_of_chunks
         ),
     )
 
-    # --------------------------------------------------------
-    # Words where breaks often sound natural in Hinglish
-    # --------------------------------------------------------
 
-    preferred_breaks = {
-        "aur",
-        "but",
-        "lekin",
-        "toh",
-        "because",
-        "basically",
-        "phir",
-        "then",
-        "so",
-    }
+# ============================================================
+# Word splitting helpers
+# ============================================================
+
+def is_natural_break(word):
+    """Return True when a word is a good place to break captions."""
+
+    punctuation_break = word.endswith(
+        (
+            ".",
+            "?",
+            "!",
+            ",",
+        )
+    )
+
+    cleaned_word = (
+        word.lower()
+        .strip(".,?!")
+    )
+
+    preferred_word_break = (
+        cleaned_word
+        in PREFERRED_BREAKS
+    )
+
+    return (
+        punctuation_break
+        or preferred_word_break
+    )
+
+
+def split_words_into_chunks(
+    words,
+    target_words,
+    max_words,
+    max_chars,
+):
+    """Split words into caption-sized chunks."""
 
     chunks = []
-
     current = []
-
     current_chars = 0
 
     for word in words:
-
         word_chars = len(word)
 
-        if current:
-            projected_chars = (
-                current_chars
-                + 1
-                + word_chars
-            )
-        else:
-            projected_chars = word_chars
+        projected_chars = (
+            current_chars
+            + (1 if current else 0)
+            + word_chars
+        )
 
         # ----------------------------------------------------
-        # If adding this word would make the caption too wide,
-        # finish the previous caption first.
+        # If adding the next word would make the caption
+        # too wide, finish the previous caption.
         # ----------------------------------------------------
 
         if (
@@ -322,6 +358,10 @@ def split_caption_text(
             current = []
             current_chars = 0
 
+        # ----------------------------------------------------
+        # Add word to current caption
+        # ----------------------------------------------------
+
         current.append(word)
 
         if current_chars:
@@ -329,63 +369,48 @@ def split_caption_text(
 
         current_chars += word_chars
 
-        punctuation_break = (
-            word.endswith(
-                (
-                    ".",
-                    "?",
-                    "!",
-                    ",",
-                )
-            )
-        )
-
-        cleaned_word = (
-            word.lower()
-            .strip(".,?!")
-        )
-
-        natural_break = (
-            cleaned_word
-            in preferred_breaks
-        )
-
         # ----------------------------------------------------
-        # Prefer a natural break once we're around target size
+        # Don't break before reaching our target size
         # ----------------------------------------------------
 
-        if len(current) >= target_words:
+        if len(current) < target_words:
+            continue
 
-            if (
-                punctuation_break
-                or natural_break
-                or len(current) >= max_words
-            ):
+        # ----------------------------------------------------
+        # Prefer natural breaks once target size is reached
+        # ----------------------------------------------------
 
-                chunks.append(
-                    current
-                )
+        should_break = (
+            is_natural_break(word)
+            or len(current) >= max_words
+        )
 
-                current = []
-
-                current_chars = 0
-
-        elif len(current) >= max_words:
-
+        if should_break:
             chunks.append(current)
 
             current = []
-
             current_chars = 0
 
-    if current:
+    # --------------------------------------------------------
+    # Add any remaining words
+    # --------------------------------------------------------
 
+    if current:
         chunks.append(current)
 
+    return chunks
 
-    # ========================================================
-    # Calculate approximate timestamps
-    # ========================================================
+
+# ============================================================
+# Caption timestamp helpers
+# ============================================================
+
+def build_caption_blocks(
+    chunks,
+    start,
+    end,
+):
+    """Assign approximate timestamps to caption chunks."""
 
     caption_blocks = []
 
@@ -400,19 +425,24 @@ def split_caption_text(
         end - start
     )
 
+    last_index = (
+        len(chunks)
+        - 1
+    )
+
     for index, chunk in enumerate(
         chunks
     ):
-
         chunk_word_count = len(chunk)
 
-        # Last chunk finishes exactly at Saaras timestamp
-        if index == len(chunks) - 1:
+        # ----------------------------------------------------
+        # Last caption finishes exactly at Saaras timestamp
+        # ----------------------------------------------------
 
+        if index == last_index:
             chunk_end = end
 
         else:
-
             chunk_duration = (
                 time_remaining
                 * chunk_word_count
@@ -441,11 +471,53 @@ def split_caption_text(
             chunk_word_count
         )
 
-        current_time = (
-            chunk_end
-        )
+        current_time = chunk_end
 
     return caption_blocks
+
+
+# ============================================================
+# Smart caption splitter
+# ============================================================
+
+def split_caption_text(
+    text,
+    start,
+    end,
+    profile,
+):
+    """Split caption text according to profile limits and timing."""
+
+    words = text.strip().split()
+
+    if not words:
+        return []
+
+    duration = (
+        end - start
+    )
+
+    target_words = calculate_target_words(
+        text=text,
+        words=words,
+        duration=duration,
+        profile=profile,
+    )
+
+    chunks = split_words_into_chunks(
+        words=words,
+        target_words=target_words,
+        max_words=profile["max_words"],
+        max_chars=caption_character_limit(
+            profile
+        ),
+    )
+
+    return build_caption_blocks(
+        chunks=chunks,
+        start=start,
+        end=end,
+    )
 
 
 # ============================================================
@@ -456,10 +528,9 @@ def format_caption(
     text,
     profile,
 ):
+    """Format caption text into one or two display lines."""
 
-    max_lines = (
-        profile["max_lines"]
-    )
+    max_lines = profile["max_lines"]
 
     max_chars = (
         profile[
@@ -472,16 +543,13 @@ def format_caption(
     # --------------------------------------------------------
 
     if max_lines == 1:
-
         return text
-
 
     # --------------------------------------------------------
     # TWO-LINE MODE
     # --------------------------------------------------------
 
     if len(text) <= max_chars:
-
         return text
 
     words = text.split()
@@ -492,52 +560,104 @@ def format_caption(
         "inf"
     )
 
-    for i in range(
+    for index in range(
         1,
-        len(words)
+        len(words),
     ):
-
-        line1 = " ".join(
-            words[:i]
+        line_one = " ".join(
+            words[:index]
         )
 
-        line2 = " ".join(
-            words[i:]
+        line_two = " ".join(
+            words[index:]
         )
 
-        if (
-            len(line1) <= max_chars
-            and
-            len(line2) <= max_chars
-        ):
+        lines_fit = (
+            len(line_one) <= max_chars
+            and len(line_two) <= max_chars
+        )
 
-            difference = abs(
-                len(line1)
-                - len(line2)
+        if not lines_fit:
+            continue
+
+        difference = abs(
+            len(line_one)
+            - len(line_two)
+        )
+
+        if difference < best_difference:
+            best_difference = difference
+
+            best_split = (
+                line_one,
+                line_two,
             )
 
-            if (
-                difference
-                < best_difference
-            ):
-
-                best_difference = (
-                    difference
-                )
-
-                best_split = (
-                    line1,
-                    line2,
-                )
-
     if best_split:
-
         return (
             f"{best_split[0]}\n"
             f"{best_split[1]}"
         )
 
     return text
+
+
+# ============================================================
+# Saaras JSON helpers
+# ============================================================
+
+def load_timestamps(json_file):
+    """Load timestamp information from a Saaras JSON file."""
+
+    with open(
+        json_file,
+        "r",
+        encoding="utf-8",
+    ) as input_file:
+        data = json.load(
+            input_file
+        )
+
+    return data["timestamps"]
+
+
+# ============================================================
+# SRT writing helpers
+# ============================================================
+
+def write_srt_entry(
+    output_handle,
+    caption_number,
+    caption,
+    profile,
+):
+    """Write one caption block to an SRT file."""
+
+    caption_text = format_caption(
+        caption["text"],
+        profile,
+    )
+
+    output_handle.write(
+        f"{caption_number}\n"
+    )
+
+    output_handle.write(
+        f"{srt_timestamp(caption['start'])}"
+        " --> "
+        f"{srt_timestamp(caption['end'])}"
+        "\n"
+    )
+
+    output_handle.write(
+        caption_text
+        + "\n\n"
+    )
+
+    return (
+        caption_number
+        + 1
+    )
 
 
 # ============================================================
@@ -549,66 +669,48 @@ def generate_srt(
     output_file,
     profile,
 ):
+    """Generate an optimized SRT file from Saaras JSON."""
 
-    with open(
-        json_file,
-        "r",
-        encoding="utf-8",
-    ) as f:
-
-        data = json.load(f)
-
-    timestamps = data["timestamps"]
-
-    texts = (
-        timestamps["words"]
+    timestamps = load_timestamps(
+        json_file
     )
 
-    starts = (
-        timestamps[
-            "start_time_seconds"
-        ]
-    )
-
-    ends = (
-        timestamps[
-            "end_time_seconds"
-        ]
-    )
+    caption_number = 1
 
     with open(
         output_file,
         "w",
         encoding="utf-8",
-    ) as f:
-
-        caption_number = 1
+    ) as output_handle:
 
         for text, start, end in zip(
-            texts,
-            starts,
-            ends,
+            timestamps["words"],
+            timestamps[
+                "start_time_seconds"
+            ],
+            timestamps[
+                "end_time_seconds"
+            ],
         ):
-
             # ----------------------------------------------
             # Normalize Saaras text
             # ----------------------------------------------
 
-            text = normalize_caption_text(
-                text
+            normalized_text = (
+                normalize_caption_text(
+                    text
+                )
             )
 
             # ----------------------------------------------
             # Split caption
             # ----------------------------------------------
 
-            captions = (
-                split_caption_text(
-                    text,
-                    start,
-                    end,
-                    profile,
-                )
+            captions = split_caption_text(
+                normalized_text,
+                start,
+                end,
+                profile,
             )
 
             # ----------------------------------------------
@@ -616,31 +718,14 @@ def generate_srt(
             # ----------------------------------------------
 
             for caption in captions:
-
-                caption_text = (
-                    format_caption(
-                        caption["text"],
+                caption_number = (
+                    write_srt_entry(
+                        output_handle,
+                        caption_number,
+                        caption,
                         profile,
                     )
                 )
-
-                f.write(
-                    f"{caption_number}\n"
-                )
-
-                f.write(
-                    f"{srt_timestamp(caption['start'])}"
-                    " --> "
-                    f"{srt_timestamp(caption['end'])}"
-                    "\n"
-                )
-
-                f.write(
-                    caption_text
-                    + "\n\n"
-                )
-
-                caption_number += 1
 
 
 # ============================================================
@@ -648,41 +733,34 @@ def generate_srt(
 # ============================================================
 
 def get_base_name(json_path):
+    """Return a clean video name from a Saaras JSON filename."""
 
     name = json_path.name
 
+    # --------------------------------------------------------
     # Remove .json
+    # --------------------------------------------------------
+
     if name.lower().endswith(
         ".json"
     ):
         name = name[:-5]
 
-    # Saaras gives files like:
+    # --------------------------------------------------------
+    # Saaras gives files such as:
+    #
     # day8_audio.mp3.json
     #
-    # Remove audio extension too.
+    # Remove audio/video extension too.
+    # --------------------------------------------------------
 
-    media_extensions = [
-        ".mp3",
-        ".wav",
-        ".m4a",
-        ".aac",
-        ".flac",
-        ".ogg",
-        ".mp4",
-    ]
-
-    for extension in media_extensions:
-
+    for extension in MEDIA_EXTENSIONS:
         if name.lower().endswith(
             extension
         ):
-
-            name = (
-                name[
-                    :-len(extension)
-                ]
-            )
+            name = name[
+                :-len(extension)
+            ]
 
             break
 
@@ -690,51 +768,54 @@ def get_base_name(json_path):
 
 
 # ============================================================
-# Arguments
+# Argument parser
 # ============================================================
 
-parser = argparse.ArgumentParser(
-    description=(
-        "Generate optimized SRT captions "
-        "from Saaras JSON"
-    )
-)
+def build_argument_parser():
+    """Create and return the command-line argument parser."""
 
-parser.add_argument(
-    "json_file",
-    help="Saaras JSON transcription file",
-)
-
-parser.add_argument(
-    "--lines",
-    type=int,
-    choices=[1, 2],
-    help=(
-        "Caption layout. "
-        "1 = vertical, 2 = horizontal"
-    ),
-)
-
-args = parser.parse_args()
-
-
-json_file = Path(
-    args.json_file
-)
-
-if not json_file.exists():
-
-    raise FileNotFoundError(
-        f"JSON file not found: "
-        f"{json_file}"
+    parser = argparse.ArgumentParser(
+        description=(
+            "Generate optimized SRT captions "
+            "from Saaras JSON"
+        )
     )
 
+    parser.add_argument(
+        "json_file",
+        help=(
+            "Saaras JSON transcription file"
+        ),
+    )
+
+    parser.add_argument(
+        "--lines",
+        type=int,
+        choices=[
+            1,
+            2,
+        ],
+        help=(
+            "Caption layout. "
+            "1 = vertical, "
+            "2 = horizontal"
+        ),
+    )
+
+    return parser
+
 
 # ============================================================
-# Ask user for caption layout
+# Caption layout selection
 # ============================================================
 
-if args.lines is None:
+def select_line_mode(
+    requested_lines,
+):
+    """Return requested caption mode or ask the user interactively."""
+
+    if requested_lines is not None:
+        return requested_lines
 
     print()
     print(
@@ -756,7 +837,6 @@ if args.lines is None:
     print()
 
     while True:
-
         choice = input(
             "Enter 1 or 2: "
         ).strip()
@@ -765,87 +845,141 @@ if args.lines is None:
             "1",
             "2",
         ):
-
-            line_mode = int(
+            return int(
                 choice
             )
-
-            break
 
         print(
             "Please enter 1 or 2."
         )
 
-else:
-
-    line_mode = args.lines
-
-
-profile = (
-    CAPTION_PROFILES[
-        line_mode
-    ]
-)
-
 
 # ============================================================
-# Output filename
+# Profile information
 # ============================================================
 
-base_name = get_base_name(
-    json_file
-)
+def display_profile(profile):
+    """Display the selected caption profile."""
 
-output_file = (
-    json_file.parent
-    / (
-        f"{base_name}_"
-        f"{profile['name']}.srt"
+    print()
+
+    print(
+        f"Mode: "
+        f"{profile['description']}"
     )
-)
+
+    print(
+        f"Max lines: "
+        f"{profile['max_lines']}"
+    )
+
+    print(
+        f"Max characters per line: "
+        f"{profile['max_chars_per_line']}"
+    )
+
+    print()
 
 
 # ============================================================
-# Generate caption file
+# Completion message
 # ============================================================
 
-print()
-print(
-    f"Mode: "
-    f"{profile['description']}"
-)
+def display_completion(
+    output_file,
+):
+    """Display the caption generation completion message."""
 
-print(
-    f"Max lines: "
-    f"{profile['max_lines']}"
-)
+    print(
+        "=============================="
+    )
 
-print(
-    f"Max characters per line: "
-    f"{profile['max_chars_per_line']}"
-)
+    print(
+        "Caption generation complete!"
+    )
 
-print()
+    print(
+        "=============================="
+    )
 
-generate_srt(
-    json_file=json_file,
-    output_file=output_file,
-    profile=profile,
-)
+    print(
+        f"SRT: {output_file}"
+    )
 
 
-print(
-    "=============================="
-)
+# ============================================================
+# Main
+# ============================================================
 
-print(
-    "Caption generation complete!"
-)
+def main():
+    """Run the caption generation command-line application."""
 
-print(
-    "=============================="
-)
+    parser = build_argument_parser()
 
-print(
-    f"SRT: {output_file}"
-)
+    args = parser.parse_args()
+
+    json_file = Path(
+        args.json_file
+    )
+
+    if not json_file.exists():
+        raise FileNotFoundError(
+            f"JSON file not found: "
+            f"{json_file}"
+        )
+
+    # --------------------------------------------------------
+    # Select caption layout
+    # --------------------------------------------------------
+
+    line_mode = select_line_mode(
+        args.lines
+    )
+
+    profile = (
+        CAPTION_PROFILES[
+            line_mode
+        ]
+    )
+
+    # --------------------------------------------------------
+    # Output filename
+    # --------------------------------------------------------
+
+    base_name = get_base_name(
+        json_file
+    )
+
+    output_file = (
+        json_file.parent
+        / (
+            f"{base_name}_"
+            f"{profile['name']}.srt"
+        )
+    )
+
+    # --------------------------------------------------------
+    # Generate caption file
+    # --------------------------------------------------------
+
+    display_profile(
+        profile
+    )
+
+    generate_srt(
+        json_file=json_file,
+        output_file=output_file,
+        profile=profile,
+    )
+
+    display_completion(
+        output_file
+    )
+
+
+# ============================================================
+# Entry point
+# ============================================================
+
+if __name__ == "__main__":
+    main()
